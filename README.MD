@@ -1,4 +1,6 @@
 # Cute Rat
+
+![cute big rat](https://github.com/user-attachments/assets/713db525-79a2-459d-b71f-e13d04efeac4)
  
 This is a basic remote administration tool that execute a command after parsing it from a TCP message received on a specified port. It then return the output to the sender.
 
