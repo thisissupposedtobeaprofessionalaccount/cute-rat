@@ -77,12 +77,16 @@ fn parse_command(command: &str) -> Command {
     let mut cmd;
     let mut parts = command.split_whitespace();
 
-    match parts.next() {
-        Some(part) => {
-            cmd = Command::new(part);
-        }
-        None => {
-            return Command::new("");
+
+    loop {
+        match parts.next() {
+            Some(part) => {
+                cmd = Command::new(part);
+                break;
+            }
+            None => {
+                return Command::new("");
+            }
         }
     }
 
@@ -125,7 +129,7 @@ mod tests {
         let command = "ls -la";
         let result = parse_command(command);
         let args: Vec<&std::ffi::OsStr> = result.get_args().collect();
-        
+
         assert_eq!(result.get_program(), "ls");
         assert_eq!(args, &["-la"]);
     }
@@ -147,5 +151,15 @@ mod tests {
 
         assert_eq!(result.get_program(), "");
         assert_eq!(result.get_args().count(), 0);
+    }
+
+    #[test]
+    fn test_parse_command_with_whitespace_command() {
+        let command = "   ls      -l      -a     ";
+        let result = parse_command(command);
+        let args: Vec<&std::ffi::OsStr> = result.get_args().collect();
+
+        assert_eq!(result.get_program(), "ls");
+        assert_eq!(args, &["-l", "-a"]);
     }
 }
