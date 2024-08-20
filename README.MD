@@ -1,6 +1,7 @@
 # Cute Rat
  
-This is a basic remote access tool that execute a command after parsing it from a TCP message received on a specified port. It then return the output to the sender.
+This is a basic remote administration tool that execute a command after parsing it from a TCP message received on a specified port. It then return the output to the sender.
+
 i.e. you could use netcat to send some command and receive the output.
 
 ```sh
