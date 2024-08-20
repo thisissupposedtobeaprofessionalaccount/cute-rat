@@ -1,6 +1,6 @@
 [package]
-name = "cute rat"
+name = "cute_rat"
 version = "0.1.5"
-edition = "2024"
+edition = "2021"
 
 [dependencies]

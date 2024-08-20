@@ -3,5 +3,5 @@
 version = 3
 
 [[package]]
-name = "test_serv"
-version = "0.1.0"
+name = "cute_rat"
+version = "0.1.5"

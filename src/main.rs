@@ -97,3 +97,55 @@ fn parse_command(command: &str) -> Command {
 
     return cmd;
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_command_with_just_command() {
+        let command = "ls";
+        let result = parse_command(command);
+        assert_eq!(result.get_program(), "ls");
+        assert_eq!(result.get_args().count(), 0);
+    }
+
+    #[test]
+    fn test_parse_command_with_one_arg() {
+        let command = "ls -l";
+        let result = parse_command(command);
+        let args: Vec<&std::ffi::OsStr> = result.get_args().collect();
+
+        assert_eq!(result.get_program(), "ls");
+        assert_eq!(args, &["-l"]);
+    }
+
+    #[test]
+    fn test_parse_command_with_multiple_args_one_dash() {
+        let command = "ls -la";
+        let result = parse_command(command);
+        let args: Vec<&std::ffi::OsStr> = result.get_args().collect();
+        
+        assert_eq!(result.get_program(), "ls");
+        assert_eq!(args, &["-la"]);
+    }
+
+    #[test]
+    fn test_parse_command_with_multiple_args_multiple_dashes() {
+        let command = "ls -l -a";
+        let result = parse_command(command);
+        let args: Vec<&std::ffi::OsStr> = result.get_args().collect();
+
+        assert_eq!(result.get_program(), "ls");
+        assert_eq!(args, &["-l", "-a"]);
+    }
+
+    #[test]
+    fn test_parse_command_with_empty_command() {
+        let command = "";
+        let result = parse_command(command);
+
+        assert_eq!(result.get_program(), "");
+        assert_eq!(result.get_args().count(), 0);
+    }
+}
