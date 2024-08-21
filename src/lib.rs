@@ -73,16 +73,12 @@ fn parse_command(command: &str) -> Command {
     let mut cmd;
     let mut parts = command.split_whitespace();
 
-
-    loop {
-        match parts.next() {
-            Some(part) => {
-                cmd = Command::new(part);
-                break;
-            }
-            None => {
-                return Command::new("");
-            }
+    match parts.next() {
+        Some(part) => {
+            cmd = Command::new(part);
+        }
+        None => {
+            return Command::new("");
         }
     }
 
