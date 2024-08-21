@@ -66,7 +66,7 @@ fn parse_stream(stream: &TcpStream) -> Command {
 
     let command = parse_command(&input);
 
-    return command;
+    command
 }
 
 fn parse_command(command: &str) -> Command {
@@ -91,7 +91,7 @@ fn parse_command(command: &str) -> Command {
         }
     }
 
-    return cmd;
+    cmd
 }
 
 #[cfg(test)]
