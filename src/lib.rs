@@ -4,7 +4,7 @@ use std::process::Command;
 use std::{io, thread, time};
 
 pub fn run(full_address: &str) {
-    let mut duration = time::Duration::from_secs(2);
+    let duration = time::Duration::from_secs(2);
     loop {
         thread::sleep(duration);
         println!("Connecting to server at {}", full_address);
@@ -50,31 +50,6 @@ fn parse_stream(stream: &TcpStream) -> Box<dyn Executable> {
     instruction_factory(input)
 }
 
-fn parse_command(command: &str) -> Command {
-    let mut cmd;
-    let mut parts = command.split_whitespace();
-
-    match parts.next() {
-        Some(part) => {
-            cmd = Command::new(part);
-        }
-        None => {
-            return Command::new("");
-        }
-    }
-
-    loop {
-        match parts.next() {
-            Some(part) => {
-                cmd.arg(part);
-            }
-            None => break,
-        }
-    }
-
-    cmd
-}
-
 struct InstructionOutput {
     output: String,
 }
@@ -96,12 +71,36 @@ impl ReceivedCommand {
     fn from_string(command: String) -> Self {
         ReceivedCommand { command }
     }
+    fn parse(&self) -> Command {
+        let mut cmd;
+        let mut parts = self.command.split_whitespace();
+
+        match parts.next() {
+            Some(part) => {
+                cmd = Command::new(part);
+            }
+            None => {
+                return Command::new("");
+            }
+        }
+
+        loop {
+            match parts.next() {
+                Some(part) => {
+                    cmd.arg(part);
+                }
+                None => break,
+            }
+        }
+
+        cmd
+    }
 }
 
 impl Executable for ReceivedCommand {
     fn execute(&self) -> Result<InstructionOutput, std::io::Error> {
-        let mut command = parse_command(&self.command);
-        let output = command.output();
+        let mut command = self.parse();
+        let output = &command.output();
 
         match output {
             Ok(output) => Ok(InstructionOutput {
@@ -153,16 +152,17 @@ mod tests {
 
     #[test]
     fn test_parse_command_with_just_command() {
-        let command = "ls";
-        let result = parse_command(command);
+        let command = ReceivedCommand::from_string("ls".to_string());
+        let result = command.parse();
+
         assert_eq!(result.get_program(), "ls");
         assert_eq!(result.get_args().count(), 0);
     }
 
     #[test]
     fn test_parse_command_with_one_arg() {
-        let command = "ls -l";
-        let result = parse_command(command);
+        let command = ReceivedCommand::from_string("ls -l".to_string());
+        let result = command.parse();
         let args: Vec<&std::ffi::OsStr> = result.get_args().collect();
 
         assert_eq!(result.get_program(), "ls");
@@ -171,8 +171,8 @@ mod tests {
 
     #[test]
     fn test_parse_command_with_multiple_args_one_dash() {
-        let command = "ls -la";
-        let result = parse_command(command);
+        let command = ReceivedCommand::from_string("ls -la".to_string());
+        let result = command.parse();
         let args: Vec<&std::ffi::OsStr> = result.get_args().collect();
 
         assert_eq!(result.get_program(), "ls");
@@ -181,8 +181,8 @@ mod tests {
 
     #[test]
     fn test_parse_command_with_multiple_args_multiple_dashes() {
-        let command = "ls -l -a";
-        let result = parse_command(command);
+        let command = ReceivedCommand::from_string("ls -l -a".to_string());
+        let result = command.parse();
         let args: Vec<&std::ffi::OsStr> = result.get_args().collect();
 
         assert_eq!(result.get_program(), "ls");
@@ -191,8 +191,8 @@ mod tests {
 
     #[test]
     fn test_parse_command_with_empty_command() {
-        let command = "";
-        let result = parse_command(command);
+        let command = ReceivedCommand::from_string("".to_string());
+        let result = command.parse();
 
         assert_eq!(result.get_program(), "");
         assert_eq!(result.get_args().count(), 0);
@@ -200,8 +200,8 @@ mod tests {
 
     #[test]
     fn test_parse_command_with_whitespace_command() {
-        let command = "   ls      -l      -a     ";
-        let result = parse_command(command);
+        let command = ReceivedCommand::from_string( "   ls      -l      -a     ".to_string());
+        let result = command.parse();
         let args: Vec<&std::ffi::OsStr> = result.get_args().collect();
 
         assert_eq!(result.get_program(), "ls");
