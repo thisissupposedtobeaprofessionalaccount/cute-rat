@@ -175,13 +175,13 @@ impl Period {
     }
 }
 
-pub struct Server {
+pub struct ServerInfo {
     address: String,
     port: u16,
 }
-impl Server {
-    pub fn new(address: String, port: u16) -> Self {
-        Server { address, port }
+impl ServerInfo {
+    pub fn new(address: &str, port: u16) -> Self {
+        ServerInfo { address : address.to_string(), port }
     }
 
     fn full_address(&self) -> String {
@@ -190,13 +190,13 @@ impl Server {
 }
 
 pub struct Config {
-    server: Server,
+    server: ServerInfo,
     request_period: Period,
     silent_mode: bool,
 }
 
 impl Config {
-    pub fn new(server : Server, request_period : Period, silent_mode : bool) -> Self {
+    pub fn new(server : ServerInfo, request_period : Period, silent_mode : bool) -> Self {
         Config {
             server,
             request_period,
@@ -266,4 +266,44 @@ mod tests {
         assert_eq!(result.get_program(), "ls");
         assert_eq!(args, &["-l", "-a"]);
     }
+
+    #[test]
+    fn test_period_to_duration_seconds() {
+        let period = Period::new(1, TimeUnit::Seconds);
+        let duration = period.to_duration();
+
+        assert_eq!(duration.as_secs(), 1);
+    }
+    #[test]
+    fn test_period_to_duration_minutes() {
+        let period = Period::new(1, TimeUnit::Minutes);
+        let duration = period.to_duration();
+
+        assert_eq!(duration.as_secs(), 60);
+    }
+
+    #[test]
+    fn test_period_to_duration_hours() {
+        let period = Period::new(1, TimeUnit::Hours);
+        let duration = period.to_duration();
+
+        assert_eq!(duration.as_secs(), 60 * 60);
+    }
+
+    #[test]
+    fn test_period_to_duration_days() {
+        let period = Period::new(1, TimeUnit::Days);
+        let duration = period.to_duration();
+
+        assert_eq!(duration.as_secs(), 60 * 60 * 24);
+    }
+
+    #[test]
+    fn test_server_info_full_address() {
+        let server = ServerInfo::new("127.0.0.1", 8080);
+        let full_address = server.full_address();
+
+        assert_eq!(full_address, "127.0.0.1:8080");
+    }
+
 }
