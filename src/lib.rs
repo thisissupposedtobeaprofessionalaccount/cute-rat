@@ -3,18 +3,19 @@ use std::net::TcpStream;
 use std::process::Command;
 use std::{io, thread, time};
 
-pub fn run(config: Config)  {
+pub fn run(config: &mut Config) {
     loop {
         thread::sleep(config.request_period.to_duration());
         let full_address = config.server.full_address();
 
         println!("Connecting to server at {}", &full_address);
-        let stream = TcpStream::connect(&full_address);
+        let stream =
+            TcpStream::connect_timeout(&full_address, time::Duration::from_millis(config.timeout));
 
         match stream {
             Ok(stream) => {
                 println!("Connected to server at {}", full_address);
-                let _ = handle_stream(stream);
+                let _ = handle_stream(stream, config);
             }
             Err(_) => {
                 println!("Failed to connect to server at {}", full_address);
@@ -24,10 +25,10 @@ pub fn run(config: Config)  {
     }
 }
 
-fn handle_stream(mut stream: TcpStream) -> Result<(), io::Error> {
+fn handle_stream(mut stream: TcpStream, config: &mut Config) -> Result<(), io::Error> {
     let instruction = parse_stream(&stream);
 
-    match instruction.execute() {
+    match instruction.execute(config) {
         Ok(output) => {
             output.send_feedback(&mut stream)?;
         }
@@ -38,7 +39,7 @@ fn handle_stream(mut stream: TcpStream) -> Result<(), io::Error> {
     Ok(())
 }
 
-fn parse_stream(stream: &TcpStream) -> Box<dyn Executable> {
+fn parse_stream(stream: &TcpStream) -> Executable {
     let mut buffer = [0; 1024];
     stream
         .peek(&mut buffer)
@@ -46,7 +47,7 @@ fn parse_stream(stream: &TcpStream) -> Box<dyn Executable> {
 
     let input = String::from_utf8_lossy(&buffer[..]);
     let input = input.trim_matches(char::from(0));
-    println!("Received command: {}", input);
+    println!("Received instruction: {}", input);
 
     instruction_factory(input)
 }
@@ -60,8 +61,19 @@ impl InstructionOutput {
         Ok(())
     }
 }
-trait Executable {
-    fn execute(&self) -> Result<InstructionOutput, io::Error>;
+
+enum Executable {
+    Command(ReceivedCommand),
+    Setting(ReceivedSetting),
+}
+
+impl Executable {
+    fn execute(&self, config: &mut Config) -> Result<InstructionOutput, io::Error> {
+        match self {
+            Executable::Command(command) => command.execute(),
+            Executable::Setting(setting) => setting.apply(config),
+        }
+    }
 }
 
 struct ReceivedCommand {
@@ -96,10 +108,8 @@ impl ReceivedCommand {
 
         cmd
     }
-}
 
-impl Executable for ReceivedCommand {
-    fn execute(&self) -> Result<InstructionOutput, std::io::Error> {
+    pub fn execute(&self) -> Result<InstructionOutput, std::io::Error> {
         let mut command = self.parse();
         let output = &command.output();
 
@@ -124,26 +134,110 @@ struct ReceivedSetting {
 }
 
 impl ReceivedSetting {
-    fn from_string(key: String, value: String) -> Self {
+    pub fn from_string(key: String, value: String) -> Self {
         ReceivedSetting { key, value }
     }
-}
 
-impl Executable for ReceivedSetting {
-    fn execute(&self) -> Result<InstructionOutput, io::Error> {
-        todo!("when settings are available implement thier execution");
+    fn parse_period(&self) -> Result<Period, std::io::Error> {
+        let parts: Vec<&str> = self.value.split_whitespace().collect();
+        let value = match parts[0].parse::<u64>() {
+            Ok(value) => value,
+            Err(_) => {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "Invalid period value",
+                ))
+            }
+        };
+        let unit = match parts[1] {
+            "ms" => TimeUnit::Milliseconds,
+            "s" => TimeUnit::Seconds,
+            "m" => TimeUnit::Minutes,
+            "h" => TimeUnit::Hours,
+            "d" => TimeUnit::Days,
+            _ => TimeUnit::Seconds,
+        };
+
+        Ok(Period::new(value, unit))
+    }
+
+    fn parse_server_info(&self) -> Result<ServerInfo, std::io::Error> {
+        let parts: Vec<&str> = self.value.split_whitespace().collect();
+        let address = parts[0];
+        let port = match parts[1].parse::<u16>() {
+            Ok(port) => port,
+            Err(_) => {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "Invalid port value",
+                ))
+            }
+        };
+        Ok(ServerInfo::new(address, port))
+    }
+
+    fn parse_timeout(&self) -> Result<u64, std::io::Error> {
+        match self.value.parse::<u64>() {
+            Ok(value) => Ok(value),
+            Err(_) => Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "Invalid timeout value",
+            )),
+        }
+    }
+
+    fn parse_silent_mode(&self) -> Result<bool, std::io::Error> {
+        match self.value.as_str() {
+            "true" => Ok(true),
+            "false" => Ok(false),
+            _ => Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "Invalid silent mode value",
+            )),
+        }
+    }
+
+    pub fn apply_setting(&self, config: &mut Config) -> Result<(), std::io::Error> {
+        match self.key.as_str() {
+            "period" => {
+                config.set_period(self.parse_period()?);
+            }
+            "server" => {
+                config.set_server_info(self.parse_server_info()?);
+            }
+            "timeout" => {
+                config.set_timeout(self.parse_timeout()?);
+            }
+            "silent" => {
+                config.set_silent_mode(self.parse_silent_mode()?);
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    pub fn apply(&self, config: &mut Config) -> Result<InstructionOutput, std::io::Error> {
+        match self.apply_setting(config) {
+            Ok(_) => Ok(InstructionOutput {
+                output: format!("Setting {} to {}\n", self.key, self.value),
+            }),
+            Err(_) => Err(std::io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("failed to apply setting {} to {}", self.key, self.value),
+            )),
+        }
     }
 }
 
-fn instruction_factory(instruction: &str) -> Box<dyn Executable> {
+fn instruction_factory(instruction: &str) -> Executable {
     let parts: Vec<&str> = instruction.split_whitespace().collect();
     match parts[0] {
-        "cmd" => Box::new(ReceivedCommand::from_string(parts[1..].join(" "))),
-        "set" => Box::new(ReceivedSetting::from_string(
+        "cmd" => Executable::Command(ReceivedCommand::from_string(parts[1..].join(" "))),
+        "set" => Executable::Setting(ReceivedSetting::from_string(
             parts[1].to_string(),
-            parts[2].to_string(),
+            parts[2..].join(" ").to_string(),
         )),
-        _ => Box::new(ReceivedCommand::from_string("".to_string())),
+        _ => Executable::Command(ReceivedCommand::from_string("".to_string())),
     }
 }
 
@@ -181,32 +275,62 @@ pub struct ServerInfo {
 }
 impl ServerInfo {
     pub fn new(address: &str, port: u16) -> Self {
-        ServerInfo { address : address.to_string(), port }
+        ServerInfo {
+            address: address.to_string(),
+            port,
+        }
     }
 
-    fn full_address(&self) -> String {
-        format!("{}:{}", self.address, self.port)
+    fn full_address(&self) -> std::net::SocketAddr {
+        let ip: std::net::IpAddr = self.address.parse().unwrap();
+        std::net::SocketAddr::new(ip, self.port)
     }
 }
 
 pub struct Config {
     server: ServerInfo,
+    timeout: u64,
     request_period: Period,
     silent_mode: bool,
 }
 
 impl Config {
-    pub fn new(server : ServerInfo, request_period : Period, silent_mode : bool) -> Self {
+    pub fn new(
+        server: ServerInfo,
+        timeout: u64,
+        request_period: Period,
+        silent_mode: bool,
+    ) -> Self {
         Config {
             server,
+            timeout,
             request_period,
             silent_mode,
         }
     }
+
+    pub fn set_period(&mut self, period: Period) {
+        self.request_period = period;
+    }
+
+    pub fn set_server_info(&mut self, server: ServerInfo) {
+        self.server = server;
+    }
+
+    pub fn set_timeout(&mut self, timeout: u64) {
+        self.timeout = timeout;
+    }
+
+    pub fn set_silent_mode(&mut self, silent_mode: bool) {
+        self.silent_mode = silent_mode;
+    }
+
 }
 
 #[cfg(test)]
 mod tests {
+    use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+
     use super::*;
 
     #[test]
@@ -259,7 +383,7 @@ mod tests {
 
     #[test]
     fn test_parse_command_with_whitespace_command() {
-        let command = ReceivedCommand::from_string( "   ls      -l      -a     ".to_string());
+        let command = ReceivedCommand::from_string("   ls      -l      -a     ".to_string());
         let result = command.parse();
         let args: Vec<&std::ffi::OsStr> = result.get_args().collect();
 
@@ -303,7 +427,9 @@ mod tests {
         let server = ServerInfo::new("127.0.0.1", 8080);
         let full_address = server.full_address();
 
-        assert_eq!(full_address, "127.0.0.1:8080");
+        assert_eq!(
+            full_address,
+            SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080)
+        );
     }
-
 }
