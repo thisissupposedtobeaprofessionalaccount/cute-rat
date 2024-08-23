@@ -432,4 +432,39 @@ mod tests {
             SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080)
         );
     }
+
+    #[test]
+    fn test_received_setting_parse_period() {
+        let setting = ReceivedSetting::from_string("period".to_string(), "1 s".to_string());
+        let period = setting.parse_period().unwrap();
+
+        assert_eq!(period.value, 1);
+        assert!(matches!(period.unit, TimeUnit::Seconds));
+    }
+
+    #[test]
+    fn test_received_setting_parse_period_bad_input () {
+        let setting = ReceivedSetting::from_string("period".to_string(), "rat x".to_string());
+        let result = setting.parse_period();
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_received_setting_parse_server_info() {
+        let setting = ReceivedSetting::from_string("server".to_string(), "127.0.0.1 6247".to_string());
+
+        let server_info = setting.parse_server_info().unwrap();
+
+        assert_eq!(server_info.address, "127.0.0.1");
+        assert_eq!(server_info.port, 6247);
+    }
+
+    #[test]
+    fn test_received_setting_timeout() {
+        let setting = ReceivedSetting::from_string("timeout".to_string(), "1000".to_string());
+        let timeout = setting.parse_timeout().unwrap();
+
+        assert_eq!(timeout, 1000);
+    }
 }
