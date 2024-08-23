@@ -140,7 +140,13 @@ impl ReceivedSetting {
 
     fn parse_period(&self) -> Result<Period, std::io::Error> {
         let parts: Vec<&str> = self.value.split_whitespace().collect();
-        let value = match parts[0].parse::<u64>() {
+
+        let value = parts.get(0).ok_or(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "Invalid period value",
+        ))?;
+
+        let value = match value.parse::<u64>() {
             Ok(value) => value,
             Err(_) => {
                 return Err(io::Error::new(
@@ -149,7 +155,13 @@ impl ReceivedSetting {
                 ))
             }
         };
-        let unit = match parts[1] {
+
+        let unit = *parts.get(1).ok_or(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "Invalid period unit",
+        ))?;
+        
+        let unit = match unit {
             "ms" => TimeUnit::Milliseconds,
             "s" => TimeUnit::Seconds,
             "m" => TimeUnit::Minutes,
@@ -163,8 +175,18 @@ impl ReceivedSetting {
 
     fn parse_server_info(&self) -> Result<ServerInfo, std::io::Error> {
         let parts: Vec<&str> = self.value.split_whitespace().collect();
-        let address = parts[0];
-        let port = match parts[1].parse::<u16>() {
+
+        let address = parts.get(0).ok_or(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "Invalid server address",
+        ))?;
+
+        let port = parts.get(1).ok_or(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "Invalid server port",
+        ))?;
+
+        let port = match port.parse::<u16>() {
             Ok(port) => port,
             Err(_) => {
                 return Err(io::Error::new(
@@ -443,6 +465,22 @@ mod tests {
     }
 
     #[test]
+    fn test_received_setting_parse_period_empty_input() {
+        let setting = ReceivedSetting::from_string("period".to_string(), "".to_string());
+        let result = setting.parse_period();
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_received_setting_parse_period_missing_unit() {
+        let setting = ReceivedSetting::from_string("period".to_string(), "1".to_string());
+        let result = setting.parse_period();
+
+        assert!(result.is_err());
+    }
+
+    #[test]
     fn test_received_setting_parse_period_bad_input () {
         let setting = ReceivedSetting::from_string("period".to_string(), "rat x".to_string());
         let result = setting.parse_period();
@@ -461,10 +499,42 @@ mod tests {
     }
 
     #[test]
+    fn test_received_setting_parse_server_info_empty_input() {
+        let setting = ReceivedSetting::from_string("server".to_string(), "".to_string());
+        let result = setting.parse_server_info();
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_received_setting_parse_server_info_missing_port() {
+        let setting = ReceivedSetting::from_string("server".to_string(), "127.0.0.1".to_string());
+        let result = setting.parse_server_info();
+
+        assert!(result.is_err());
+    }
+    
+    #[test]
+    fn test_received_setting_parse_server_info_bad_input() {
+        let setting = ReceivedSetting::from_string("server".to_string(), "rat rat".to_string());
+        let result = setting.parse_server_info();
+
+        assert!(result.is_err());
+    }
+
+    #[test]
     fn test_received_setting_timeout() {
         let setting = ReceivedSetting::from_string("timeout".to_string(), "1000".to_string());
         let timeout = setting.parse_timeout().unwrap();
 
         assert_eq!(timeout, 1000);
+    }
+
+    #[test]
+    fn test_received_setting_timeout_empty_input() {
+        let setting = ReceivedSetting::from_string("timeout".to_string(), "".to_string());
+        let result = setting.parse_timeout();
+
+        assert!(result.is_err());
     }
 }
