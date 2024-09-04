@@ -100,25 +100,27 @@ impl ReceivedCommand {
 
         let mut cmds = commands.iter_mut();
 
-
         let mut previous_process: Option<Child> = None;
 
-        loop {
-            match cmds.next() {
-                Some(command) => {
-                    match previous_process {
-                        Some(ref mut prev_proc) => {
-                            previous_process = command.stdin(prev_proc.stdout.take().unwrap()).spawn().ok();
-                        }
-                        None => previous_process = command.spawn().ok(), 
-                    }
+        while let Some(command) = cmds.next() {
+            match previous_process {
+                Some(prev_proc) => {
+                    let stdout = prev_proc.stdout.ok_or_else(|| {
+                        std::io::Error::new(std::io::ErrorKind::Other, "No stdout")
+                    })?;
+
+                    previous_process = command.stdin(stdout).spawn().ok();
                 }
-                None => break,
+                None => previous_process = command.spawn().ok(),
             }
         }
 
-        if let Some(ref mut previous_process) = previous_process {
-            last_command.stdin(previous_process.stdout.take().unwrap());
+        if let Some( previous_process) = previous_process {
+            let stdout = previous_process
+                .stdout
+                .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::Other, "No stdout"))?;
+
+            last_command.stdin(stdout);
         }
 
         let output = last_command.output();
