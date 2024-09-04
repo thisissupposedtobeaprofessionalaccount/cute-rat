@@ -98,30 +98,9 @@ impl ReceivedCommand {
             }
         }
 
-        let mut cmds = commands.iter_mut();
+        let cmds = commands.iter_mut();
 
-        let mut previous_process: Option<Child> = None;
-
-        while let Some(command) = cmds.next() {
-            match previous_process {
-                Some(prev_proc) => {
-                    let stdout = prev_proc.stdout.ok_or_else(|| {
-                        std::io::Error::new(std::io::ErrorKind::Other, "No stdout")
-                    })?;
-
-                    previous_process = command.stdin(stdout).spawn().ok();
-                }
-                None => previous_process = command.spawn().ok(),
-            }
-        }
-
-        if let Some( previous_process) = previous_process {
-            let stdout = previous_process
-                .stdout
-                .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::Other, "No stdout"))?;
-
-            last_command.stdin(stdout);
-        }
+        pipe_commands(cmds, &mut last_command)?;
 
         let output = last_command.output();
 
@@ -138,6 +117,32 @@ impl ReceivedCommand {
             }),
         }
     }
+}
+
+fn pipe_commands(
+    mut cmds: std::slice::IterMut<std::process::Command>,
+    last_command: &mut std::process::Command,
+) -> Result<(), std::io::Error> {
+    let mut previous_process: Option<Child> = None;
+    while let Some(command) = cmds.next() {
+        match previous_process {
+            Some(prev_proc) => {
+                let stdout = prev_proc
+                    .stdout
+                    .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::Other, "No stdout"))?;
+
+                previous_process = command.stdin(stdout).spawn().ok();
+            }
+            None => previous_process = command.spawn().ok(),
+        }
+    }
+    Ok(if let Some(previous_process) = previous_process {
+        let stdout = previous_process
+            .stdout
+            .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::Other, "No stdout"))?;
+
+        last_command.stdin(stdout);
+    })
 }
 
 #[cfg(test)]
