@@ -14,6 +14,7 @@ use std::{io, thread, time};
 pub fn run(config: &mut config::Config) {
     loop {
         thread::sleep(config.request_period.to_duration());
+
         let full_address = config.server.full_address();
 
         println!("Connecting to server at {}", &full_address);
